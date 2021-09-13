@@ -1,0 +1,155 @@
+import fs from 'fs'
+import crypto from 'crypto'
+/**
+ * p2p peer
+ * @param {*} host
+ * @param {*} port: Local IP address to bind to, default is any.
+ * @param {*} family: 4 = IPv4-only, 6 = IPv6-only, 0 = either (default).
+ */
+export class Peer {
+  constructor ({ id, host, port, family }) {
+    this.id = id || Peer.getId(`${host}:${port}`)
+    this.host = host
+    this.port = port
+    this.family = family
+    this.status = Peer.STATUS.ready
+
+    this.delay = 0
+    this.failCount = 0
+  }
+
+  static getId (data) {
+    return crypto.createHash('md5').update(Buffer.from(data)).digest().toString('hex')
+  }
+
+  setProxy (host, port) {
+    this.proxy = {
+      host, port
+    }
+  }
+
+  setStatus () {
+    this.status = Peer.STATUS.pending
+    this.delay = 0
+    this.failCount = 0
+  }
+}
+
+Peer.STATUS = {
+  disable: 0,
+  pending: 1,
+  ready: 2
+}
+
+// Peer.FAMILY = {
+//   IPv4: 4,
+//   IPv6: 6,
+//   either: 0,
+// }
+
+/**
+ * peer list
+ * @param {*} options
+ *   options.delayTime: Next retry time interval.
+ *   options.tryTimes: Retry times before remove it.
+ *   options.dbfile: Filepath to persist the peers data.
+ */
+export class Inventory {
+  constructor (options) {
+    options = options || {}
+    this.peers = new Map()
+    this.delayTime = options.delayTime || 3600
+    this.tryTimes = options.tryTimes || 5
+    this.dbfile = options.dbfile || './peer.db'
+    this.logger = options.logger || console
+
+    if (fs.existsSync(this.dbfile)) {
+      const peers = JSON.parse(fs.readFileSync(this.dbfile))
+      for (const peer of peers) {
+        this.peers.set(peer.id, peer)
+      }
+    }
+  }
+
+  has (id) {
+    return this.peers.has(id)
+  }
+
+  get (id) {
+    return this.peers.get(id)
+  }
+
+  add (peer) {
+    if (peer.id === this.id) return
+    if (!this.peers.has(peer.id)) this.peers.set(peer.id, new Peer(peer))
+
+    // this.logger.debug(`peer added to inventory`, peer)
+    // fs.writeFileSync(this.dbfile, JSON.stringify([...this.peers.values()]))
+  }
+
+  update (peerId, data) {
+    const peer = this.peers.get(peerId)
+    for (const key of data) {
+      peer[key] = data[key]
+    }
+  }
+
+  remove (id) {
+    this.peers.delete(id)
+    // fs.writeFileSync(this.dbfile, JSON.stringify([...this.peers.values()]))
+  }
+
+  flush () {
+    fs.writeFileSync(this.dbfile, JSON.stringify([...this.peers.values()]))
+  }
+
+  disable (id) {
+    const peer = this.peers.get(id)
+    if (!peer) return
+
+    peer.status = Peer.STATUS.disable
+    peer.failCount = +peer.failCount + 1
+    if (peer.failCount > this.tryTimes) {
+      this.logger.debug('exceed max try times, remove the peer:', peer.host, peer.port)
+      this.remove(id)
+      return
+    }
+
+    peer.delay = Date.now() + this.delayTime * 1000
+  }
+
+  enable (id) {
+    const peer = this.peers.get(id)
+    if (!peer) return
+
+    peer.status = Peer.STATUS.pending
+    peer.failCount = 0
+    peer.delay = 0
+  }
+
+  enableAll () {
+    this.peers.forEach((peer, id) => {
+      if (peer.status === Peer.STATUS.disable && Date.now() > peer.delay) {
+        peer.status = Peer.STATUS.pending
+        peer.failCount = 0
+        peer.delay = 0
+      }
+    })
+  }
+
+  getAllPeers () {
+    const result = []
+    this.peers.forEach((peer) => {
+      if (peer.status !== Peer.STATUS.disable) { result.push(peer) }
+    })
+    // this.logger.debug(`all peers: `, this.peers)
+    return result
+  }
+
+  getRandomPeer () {
+    const peers = this.getAllPeers()
+    const rnd = Math.floor(Math.random() * peers.length)
+    // this.logger.debug(`random peer pos: `, rnd, peers.length)
+    return [...peers.values()][rnd]
+  }
+}
