@@ -40,7 +40,6 @@ export class Message {
     return isText(data) ? Message.types.TEXT : (isBinary(data) ? Message.types.BINARY : Message.types.JSON)
   }
 
-  
   /**
    *
    * @param {*} data
@@ -99,9 +98,9 @@ export class Message {
     }
 
     meta = meta || {}
-    const { type, checksum } = !meta.type || !meta.checksum? Message.getMetadata(data) : meta
+    const { type, checksum } = !meta.type || !meta.checksum ? Message.getMetadata(data) : meta
     const metabuf = Buffer.from(JSON.stringify({ ...meta, type, checksum }))
-    const payload = type === Message.types.BINARY? data : Buffer.from(type === Message.types.JSON ?JSON.stringify(data) : data)
+    const payload = type === Message.types.BINARY ? data : Buffer.from(type === Message.types.JSON ? JSON.stringify(data) : data)
 
     buf.writeUInt32LE(metabuf.length + 10 + header_size + payload.length, header_size) // size includes type, checksum and payload
     buf.writeUInt16LE(metabuf.length + 10 + header_size, header_size + 8)
@@ -151,7 +150,7 @@ export class Message {
     const checksum_calc = Message.checksum(payload).toString('hex')
     const meta = JSON.parse(metadata)
     if (meta.checksum !== checksum_calc) {
-      this.logger.warn(`invalid data payload, checksum is not right, expected: ${checksum}, but got: ${checksum_calc}`)
+      this.logger.warn(`invalid data payload, checksum is not right, expected: ${meta.checksum}, but got: ${checksum_calc}`)
       return
     }
 

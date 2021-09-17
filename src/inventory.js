@@ -159,9 +159,9 @@ export class Inventory {
     this.peers.forEach((peer) => {
       if (peer.status !== Peer.STATUS.disable && !fib.includes(peer.id)) peers.push(peer)
     })
-    
-    count = peers.length > count? count : peers.length
-    for(let i = 0; i < count; i++) {
+
+    count = peers.length > count ? count : peers.length
+    for (let i = 0; i < count; i++) {
       const rnd = Math.floor(Math.random() * peers.length)
       results.push(peers[rnd])
     }

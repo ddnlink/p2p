@@ -5,7 +5,6 @@ import { Inventory, Peer } from './inventory'
 import { parseUrl } from './util'
 import { Cache } from './cache'
 
-
 /**
  *
  * @param {*} port
@@ -286,7 +285,7 @@ export class P2P { // extends EventEmitter {
         const { signature, checksum, fib } = msg.meta || {}
         const key = signature || checksum
         const myfib = this.fib.get(key)
-        if(myfib) {
+        if (myfib) {
           this.cache.set(key, [...new Set([...myfib, ...fib])])
           return
         }
@@ -375,13 +374,13 @@ export class P2P { // extends EventEmitter {
     const key = signature || checksum
     const fib = this.fib.get(key) || [this.id]
     const peers = this.inventory.getNextHop(fib, 11)
-    fib.push(...peers.map(peer => peer.id)) 
+    fib.push(...peers.map(peer => peer.id))
     peers.forEach(async peer => {
       try {
         if (!self.pool.has(peer.id)) {
           await self.connect(peer.port, peer.host)
         }
-  
+
         const pipe = self.pool.get(peer.id)
         pipe.send(Message.commands.PUSH, data, { fib, api, type, checksum, signature })
       } catch (err) {
