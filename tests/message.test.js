@@ -67,16 +67,16 @@ describe('Message tool test', () => {
     expect(result5).toBe(Message.types.JSON)
   })
 
-  it('packet method test', async () => {
+  it('packet method test', () => {
     writeData = protocol.packet(Message.commands.GET, 'hello')
     expect(protocol.serial).toBe(1)
-    expect(writeData.toString('hex')).toBe('64646e3a7032702f2f7631403061623739366364050000000000150000005d41402abc4b2a76b9719d911017c59268656c6c6f')
-    responseData = protocol.packet(Message.commands.RESPONSE, 'world', 5)
+    expect(writeData.toString('hex')).toBe('64646e3a7032702f2f76314030616237393663645b0000000000150056007b2274797065223a302c22636865636b73756d223a223564343134303261626334623261373662393731396439313130313763353932227d68656c6c6f')
+    responseData = protocol.packet(Message.commands.RESPONSE, 'world', null, 5)
     expect(protocol.serial).toBe(1)
-    expect(responseData.toString('hex')).toBe('64646e3a7032702f2f7631403061623739366364050000000500190000007d793037a0760186574b0282f2f435e7776f726c64')
+    expect(responseData.toString('hex')).toBe('64646e3a7032702f2f76314030616237393663645b0000000500190056007b2274797065223a302c22636865636b73756d223a223764373933303337613037363031383635373462303238326632663433356537227d776f726c64')
   })
 
-  it('unpack method test', async () => {
+  it('unpack method test', () => {
     const dataBuffer1 = new Buffers()
     dataBuffer1.push(writeData)
     const unpackWriteMsg = protocol.unpack(dataBuffer1)
@@ -92,7 +92,7 @@ describe('Message tool test', () => {
     expect(unpackResponseMsg.cmd).toBe(Message.commands.RESPONSE)
     expect(unpackResponseMsg.data.toString()).toBe('world')
   })
-  it('uniray packet test', async () => {
+  it('uniray packet test', () => {
     const version = protocol.packet(Message.commands.VERSION)
     expect(protocol.serial).toBe(2)
     expect(version.length).toBe(protocol.minPacketSize)
@@ -103,15 +103,17 @@ describe('Message tool test', () => {
     expect(unpackVersionMsg.cmd).toBe(Message.commands.VERSION)
     expect(unpackVersionMsg.serial).toBe(1)
   })
-  it('non uniray packet test', async () => {
+  it('non uniray packet test', () => {
     const packet = protocol.packet(Message.commands.GET, 'hello')
     expect(protocol.serial).toBe(3)
-    expect(packet.length).toBe(protocol.minPacketSize + 18 + 5)
+    expect(packet.length).toBe(91)
     const dataBuffer = new Buffers()
     dataBuffer.push(packet)
     const unpackPacketMsg = protocol.unpack(dataBuffer)
     expect(unpackPacketMsg.size).toBe(5)
     expect(unpackPacketMsg.cmd).toBe(Message.commands.GET)
     expect(unpackPacketMsg.serial).toBe(2)
+    expect(unpackPacketMsg.data.toString()).toBe('hello')
+    expect(unpackPacketMsg.meta.type).toBe(0)
   })
 })

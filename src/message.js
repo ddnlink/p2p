@@ -28,7 +28,7 @@ export class Message {
    * @returns 32 byte hash
    */
   static checksum (buf) {
-    return crypto.createHash('md5').update(buf).digest().slice(0, 16)
+    return crypto.createHash('md5').update(buf).digest().slice(0, 16).toString('hex')
   }
 
   /**
@@ -38,6 +38,22 @@ export class Message {
    */
   static getDataType (data) {
     return isText(data) ? Message.types.TEXT : (isBinary(data) ? Message.types.BINARY : Message.types.JSON)
+  }
+
+  
+  /**
+   *
+   * @param {*} data
+   */
+  static getMetadata (data) {
+    // 0 等数字, false, true, 按对像处理; null 是对象; '', "" 是string
+    if (data === undefined) return
+
+    const type = Message.getDataType(data)
+    const payload = Buffer.from(type === Message.types.JSON ? JSON.stringify(data) : data)
+    const checksum = Message.checksum(payload)
+    // this.logger.debug(`send payload size: ${payload.length}`, payload)
+    return { type, checksum, payload }
   }
 
   _findHeader (dataBuffer) {
@@ -65,7 +81,7 @@ export class Message {
    * @param {*} cmd
    * @param {*} data
    */
-  packet (cmd, data, serial) {
+  packet (cmd, data, meta, serial) {
     if (typeof cmd !== 'number' || cmd < 0 || cmd > 65535) {
       this.logger.warn(`It's not a ligal p2p command: ${cmd}.`)
       return
@@ -78,19 +94,20 @@ export class Message {
     buf.writeUInt16LE(currentSerial & 0xffff, header_size + 4)
     buf.writeUInt16LE(cmd, header_size + 6)
     if (data === undefined) { // 0 等数字, false, true, 按对像处理; null 是对象; '', "" 是string
-      buf.writeUInt32LE(0, header_size)
+      buf.writeUInt32LE(this.minPacketSize, header_size)
       return buf
     }
 
-    const type = Message.getDataType(data)
-    const payload = Buffer.from(type === Message.types.JSON ? JSON.stringify(data) : data)
-    const checksum = Message.checksum(payload)
+    meta = meta || {}
+    const { type, checksum } = !meta.type || !meta.checksum? Message.getMetadata(data) : meta
+    const metabuf = Buffer.from(JSON.stringify({ ...meta, type, checksum }))
+    const payload = type === Message.types.BINARY? data : Buffer.from(type === Message.types.JSON ?JSON.stringify(data) : data)
 
-    buf.writeUInt32LE(payload.length, header_size) // size includes type, checksum and payload
-    buf.writeUInt16LE(type, header_size + 8)
+    buf.writeUInt32LE(metabuf.length + 10 + header_size + payload.length, header_size) // size includes type, checksum and payload
+    buf.writeUInt16LE(metabuf.length + 10 + header_size, header_size + 8)
 
     // this.logger.debug(`send payload size: ${payload.length}`, payload)
-    return Buffer.concat([buf, checksum, payload])
+    return Buffer.concat([buf, metabuf, payload])
   }
 
   /**
@@ -108,12 +125,10 @@ export class Message {
     }
 
     const header_size = this._header_size
-    const size = bufs.slice(header_size, header_size + 4).readUInt32LE()
-
-    const packet_size = !size ? this.minPacketSize : header_size + 26 + size
+    const packet_size = bufs.slice(header_size, header_size + 4).readUInt32LE()
     // 含有负载，如果缓存数据 < 包大小，返回，等待下次处理，此时不移动游標
-    // 包大小 =  头 + 长度 + 序列号 + 命令 + 类型 + 校验码 + 负载长度
-    // 即大小 =  头 +  4  +    2   +  2  +  2   +   16   +  size
+    // 包大小 =  头 + 长度 + 序列号 + 命令 + 元數據長度 +   元數據    +  负载长度
+    // 即大小 =  头 +  4  +    2   +  2   +     2     +  metasize   +   size
     if (bufs.length < packet_size) {
       return
     }
@@ -121,25 +136,27 @@ export class Message {
     const serial = bufs.slice(header_size + 4, header_size + 6).readUInt16LE()
     const cmd = bufs.slice(header_size + 6, header_size + 8).readUInt16LE()
     // 如果负载为0， 直接返回
-    if (!size) {
-      bufs.discard(header_size + 8)
+    if (packet_size <= this.minPacketSize) {
+      bufs.discard(packet_size)
       return { serial, cmd }
     }
 
-    const type = bufs.slice(header_size + 8, header_size + 10).readUInt16LE()
-    const checksum = bufs.slice(header_size + 10, header_size + 26).toString('hex')
-    const payload = bufs.slice(header_size + 26, header_size + 26 + size)
+    const metastart = header_size + 10
+    const metaend = bufs.slice(header_size + 8, metastart).readUInt16LE()
+    const metadata = bufs.slice(metastart, metaend)
+    const payload = bufs.slice(metaend, packet_size)
 
     // read message successed, discard it from buffer
-    bufs.discard(header_size + 26 + size)
+    bufs.discard(packet_size)
     const checksum_calc = Message.checksum(payload).toString('hex')
-    if (checksum !== checksum_calc) {
+    const meta = JSON.parse(metadata)
+    if (meta.checksum !== checksum_calc) {
       this.logger.warn(`invalid data payload, checksum is not right, expected: ${checksum}, but got: ${checksum_calc}`)
       return
     }
 
-    const data = type === Message.types.JSON ? JSON.parse(payload) : (type === Message.types.TEXT ? payload.toString() : payload)
-    return { serial, cmd, size, data }
+    const data = meta.type === Message.types.JSON ? JSON.parse(payload) : (meta.type === Message.types.TEXT ? payload.toString() : payload)
+    return { serial, cmd, size: payload.length, meta, data }
   }
 }
 

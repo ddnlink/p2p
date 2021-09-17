@@ -3,6 +3,8 @@ import { Pipe } from './pipe'
 import { Message } from './message'
 import { Inventory, Peer } from './inventory'
 import { parseUrl } from './util'
+import { Cache } from './cache'
+
 
 /**
  *
@@ -18,11 +20,11 @@ import { parseUrl } from './util'
  *   options.maxConnectSize: pool size, exceed this number new pipe not be kept.
  */
 export class P2P { // extends EventEmitter {
-  constructor (port, host, options) {
-    // super()
+  constructor (options) {
+    // check if we have options
     options = options || {}
-    this.port = port || 9001
-    this.host = host || '127.0.0.1'
+    this.port = options.port || 9001
+    this.host = options.host || '127.0.0.1'
     this.cycle = options.cycle || 10000
     this.timeout = options.timeout || 5000
     this.version = options.version || 'v1'
@@ -36,8 +38,10 @@ export class P2P { // extends EventEmitter {
     this.ready = false
 
     this.id = Peer.getId(`${this.host}:${this.port}`)
+    // Forward Information Base
+    this.fib = new Cache()
     // remember open sockets
-    this.pool = new Map()
+    this.pool = new Cache({ max: this.maxConnectSize, clean: (pipe) => pipe.close() })
     this.inventory = new Inventory({ dbfile: options.dbfile, logger: this.logger })
   }
 
@@ -138,9 +142,7 @@ export class P2P { // extends EventEmitter {
 
   _addPipe (pipe, peer) {
     pipe.id = peer.id
-    if (this.pool.size < this.maxConnectSize) {
-      this.pool.set(pipe.id, pipe)
-    }
+    this.pool.set(pipe.id, pipe)
     this.inventory.add(peer)
 
     this.logger.debug(`success connect to peer: ${peer.host}:${peer.port}`)
@@ -191,9 +193,7 @@ export class P2P { // extends EventEmitter {
       this._server.removeAllListeners('data')
       this._server.close(callback)
 
-      this.pool.forEach((pipe) => {
-        pipe.close()
-      })
+      this.pool.reset()
 
       this.logger.debug({ action: 'close server' })
     } else {
@@ -207,7 +207,7 @@ export class P2P { // extends EventEmitter {
    */
   _response (pipe, data, serial) {
     try {
-      pipe.send(Message.commands.RESPONSE, data, serial)
+      pipe.send(Message.commands.RESPONSE, data, undefined, serial)
     } catch (err) {
       this.logger.error('response failed', err)
     }
@@ -240,7 +240,7 @@ export class P2P { // extends EventEmitter {
       // this.logger.warn(`check url, origin: ${api}, now: ${url}`)
       const pipe = await this.connect(port, host)
       if (!pipe) return
-      const msg = await pipe.request(method, { api, data })
+      const msg = await pipe.request(method, data, { api })
       if (!this.pool.has(pipe.id)) {
         pipe.close()
       }
@@ -255,9 +255,9 @@ export class P2P { // extends EventEmitter {
 
   async _callApi (msg, peer) {
     try {
-      const { api, data } = msg.data || {}
-      const { params, pathname } = parseUrl(api)
-      const req = { body: data, params, peer }
+      const meta = msg.meta || {}
+      const { params, pathname } = parseUrl(meta.api)
+      const req = { body: msg.data, params, peer }
       const cmd = msg.cmd === Message.commands.PUSH ? Message.commands.POST : msg.cmd
       const reg = new RegExp(`^${Message.methods[cmd]}\\s*${pathname}$`, 'i')
       const key = Object.keys(this.routes).find((path) => {
@@ -283,6 +283,13 @@ export class P2P { // extends EventEmitter {
     const peer = this.inventory.get(pipe.id)
     switch (msg.cmd) {
       case Message.commands.PUSH: {
+        const { signature, checksum, fib } = msg.meta || {}
+        const key = signature || checksum
+        const myfib = this.fib.get(key)
+        if(myfib) {
+          this.cache.set(key, [...new Set([...myfib, ...fib])])
+          return
+        }
         await this._callApi(msg, peer)
         break
       }
@@ -357,17 +364,28 @@ export class P2P { // extends EventEmitter {
    * @param {*} api
    * @param {*} data
    */
-  broadcast (api, data) {
+  broadcast (api, data, signature) {
     if (typeof api === 'object') {
       data = api.data
       api = api.api
     }
     if (!api || !data) return
-    this.pool.forEach(pipe => {
+    const self = this
+    const { type, checksum } = Message.getMetadata(data)
+    const key = signature || checksum
+    const fib = this.fib.get(key) || [this.id]
+    const peers = this.inventory.getNextHop(fib, 11)
+    fib.push(...peers.map(peer => peer.id)) 
+    peers.forEach(async peer => {
       try {
-        pipe.send(Message.commands.PUSH, { api, data })
+        if (!self.pool.has(peer.id)) {
+          await self.connect(peer.port, peer.host)
+        }
+  
+        const pipe = self.pool.get(peer.id)
+        pipe.send(Message.commands.PUSH, data, { fib, api, type, checksum, signature })
       } catch (err) {
-        this.logger.error('broadcast data failed', err)
+        self.logger.error('broadcast data failed', err)
         throw err
       }
     })

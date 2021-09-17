@@ -142,8 +142,8 @@ export class Pipe extends EventEmitter {
    * @param cmd
    * @param data
    */
-  send (cmd, data, serial) {
-    const buf = this._protocol.packet(cmd, data, serial)
+  send (cmd, data, meta, serial) {
+    const buf = this._protocol.packet(cmd, data, meta, serial)
     this.socket.write(buf)
     // this.logger.debug(`send msg, cmd: ${cmd}, msg: `, msg)
     // this.logger.debug(`packet msg to buffer: `, data)
@@ -154,7 +154,7 @@ export class Pipe extends EventEmitter {
    * @param cmd
    * @param data
    */
-  async request (cmd, data) {
+  async request (cmd, data, meta) {
     return new Promise((resolve, reject) => {
       const handle = setTimeout(() => {
         reject(new Error('request is timeout'))
@@ -166,7 +166,7 @@ export class Pipe extends EventEmitter {
         resolve(res)
       }
       this._queue.set(this._protocol.serial, response.bind(this))
-      this.send(cmd, data)
+      this.send(cmd, data, meta)
     })
   }
 
@@ -178,21 +178,20 @@ export class Pipe extends EventEmitter {
     const packet = this._protocol.unpack(this._buffers)
     // this.logger.debug('received packet: ', packet)
     if (!packet) return
-    const { serial, cmd, size, data } = packet
+    const { serial, cmd } = packet
     if (cmd === Message.commands.PING) {
-      this.send(Message.commands.PONG, null, serial)
+      this.send(Message.commands.PONG, undefined, undefined, serial)
       return
     }
-    const msg = { serial, cmd, size, data }
     if (cmd === Message.commands.RESPONSE || cmd === Message.commands.PONG) {
       const response = this._queue.get(serial)
-      if (response) response(null, msg)
+      if (response) response(null, packet)
       this._queue.delete(serial)
       return
     }
     // if(this.msgEmitCmd.includes(msg.cmd))
     // this.logger.debug('emit message event: ', msg)
-    this.emit('message', msg)
+    this.emit('message', packet)
 
     this._processData()
   }
@@ -215,6 +214,6 @@ export class Pipe extends EventEmitter {
   }
 
   pong (serial) {
-    this.send(Message.commands.PONG, null, serial)
+    this.send(Message.commands.PONG, undefined, undefined, serial)
   }
 }

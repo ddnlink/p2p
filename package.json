@@ -11,7 +11,8 @@
     "build": "father-build",
     "prod": "father-build",
     "test": "jest",
-    "lint": "eslint --ext .js ."
+    "lint": "eslint --ext .js .",
+    "cm": "git-cz"
   },
   "keywords": [
     "ddn",

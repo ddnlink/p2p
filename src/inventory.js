@@ -152,4 +152,19 @@ export class Inventory {
     // this.logger.debug(`random peer pos: `, rnd, peers.length)
     return [...peers.values()][rnd]
   }
+
+  getNextHop (fib, count) {
+    const peers = []
+    const results = []
+    this.peers.forEach((peer) => {
+      if (peer.status !== Peer.STATUS.disable && !fib.includes(peer.id)) peers.push(peer)
+    })
+    
+    count = peers.length > count? count : peers.length
+    for(let i = 0; i < count; i++) {
+      const rnd = Math.floor(Math.random() * peers.length)
+      results.push(peers[rnd])
+    }
+    return results
+  }
 }
