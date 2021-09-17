@@ -46,13 +46,13 @@ export class Message {
    */
   static getMetadata (data) {
     // 0 等数字, false, true, 按对像处理; null 是对象; '', "" 是string
-    if (data === undefined) return
+    if (data === undefined) return { size: 0 }
 
     const type = Message.getDataType(data)
-    const payload = Buffer.from(type === Message.types.JSON ? JSON.stringify(data) : data)
+    const payload = type === Message.types.BINARY ? data : Buffer.from(type === Message.types.JSON ? JSON.stringify(data) : data)
     const checksum = Message.checksum(payload)
     // this.logger.debug(`send payload size: ${payload.length}`, payload)
-    return { type, checksum, payload }
+    return { type, checksum, payload, size: payload.length }
   }
 
   _findHeader (dataBuffer) {
@@ -86,27 +86,34 @@ export class Message {
       return
     }
 
+    const isUnary = meta === undefined && data === undefined
     const header_size = this._header_size
-    const buf = Buffer.alloc(header_size + 8 + (data === undefined ? 0 : 2))
+    const buf = Buffer.alloc(header_size + 8 + (isUnary ? 0 : 2))
     const currentSerial = isNaN(serial) ? this.serial++ : serial
     buf.write(this._header)
     buf.writeUInt16LE(currentSerial & 0xffff, header_size + 4)
     buf.writeUInt16LE(cmd, header_size + 6)
-    if (data === undefined) { // 0 等数字, false, true, 按对像处理; null 是对象; '', "" 是string
+    if (isUnary) { // 0 等数字, false, true, 按对像处理; null 是对象; '', "" 是string
       buf.writeUInt32LE(this.minPacketSize, header_size)
       return buf
     }
 
-    meta = meta || {}
-    const { type, checksum } = !meta.type || !meta.checksum ? Message.getMetadata(data) : meta
-    const metabuf = Buffer.from(JSON.stringify({ ...meta, type, checksum }))
-    const payload = type === Message.types.BINARY ? data : Buffer.from(type === Message.types.JSON ? JSON.stringify(data) : data)
+    let metadata, payload
+    if (cmd === Message.commands.PUSH) {
+      metadata = meta || {}
+      payload = data
+    } else {
+      const { type, checksum, size, payload: buf } = Message.getMetadata(data)
+      metadata = { ...meta, type, checksum, size }
+      payload = buf
+    }
+    const metabuf = Buffer.from(JSON.stringify(metadata))
 
-    buf.writeUInt32LE(metabuf.length + 10 + header_size + payload.length, header_size) // size includes type, checksum and payload
+    buf.writeUInt32LE(metabuf.length + 10 + header_size + metadata.size, header_size) // size includes type, checksum and payload
     buf.writeUInt16LE(metabuf.length + 10 + header_size, header_size + 8)
 
     // this.logger.debug(`send payload size: ${payload.length}`, payload)
-    return Buffer.concat([buf, metabuf, payload])
+    return payload ? Buffer.concat([buf, metabuf, payload]) : Buffer.concat([buf, metabuf])
   }
 
   /**
@@ -147,15 +154,18 @@ export class Message {
 
     // read message successed, discard it from buffer
     bufs.discard(packet_size)
-    const checksum_calc = Message.checksum(payload).toString('hex')
     const meta = JSON.parse(metadata)
+    if (!meta.size) {
+      return { serial, cmd, meta }
+    }
+    const checksum_calc = Message.checksum(payload).toString('hex')
     if (meta.checksum !== checksum_calc) {
       this.logger.warn(`invalid data payload, checksum is not right, expected: ${meta.checksum}, but got: ${checksum_calc}`)
       return
     }
 
     const data = meta.type === Message.types.JSON ? JSON.parse(payload) : (meta.type === Message.types.TEXT ? payload.toString() : payload)
-    return { serial, cmd, size: payload.length, meta, data }
+    return { serial, cmd, meta, data }
   }
 }
 
@@ -163,7 +173,6 @@ Message.PRIFIX = 'ddn:p2p'
 Message.MAX_PACKET_SIZE = 10485760 // 10 Mb
 
 Message.types = {
-  // 基础命令
   TEXT: 0,
   BINARY: 1,
   JSON: 2

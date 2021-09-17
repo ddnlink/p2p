@@ -370,7 +370,7 @@ export class P2P { // extends EventEmitter {
     }
     if (!api || !data) return
     const self = this
-    const { type, checksum } = Message.getMetadata(data)
+    const { type, checksum, size, payload } = Message.getMetadata(data)
     const key = signature || checksum
     const fib = this.fib.get(key) || [this.id]
     const peers = this.inventory.getNextHop(fib, 11)
@@ -382,7 +382,7 @@ export class P2P { // extends EventEmitter {
         }
 
         const pipe = self.pool.get(peer.id)
-        pipe.send(Message.commands.PUSH, data, { fib, api, type, checksum, signature })
+        pipe.send(Message.commands.PUSH, payload, { fib, api, type, checksum, size, signature })
       } catch (err) {
         self.logger.error('broadcast data failed', err)
         throw err
