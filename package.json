@@ -19,7 +19,7 @@
     "node",
     "p2p"
   ],
-  "author": "wxx",
+  "author": "Tailor",
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -30,7 +30,6 @@
     "url": "http://github.com/ddnlink/ddn/issues"
   },
   "dependencies": {
-    "ip": "^1.1.5",
     "socks5-client": "^1.2.8"
   },
   "devDependencies": {
