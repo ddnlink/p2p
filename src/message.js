@@ -14,7 +14,6 @@ export class Message {
     options = options || {}
     this.version = options.version || 'v1'
     this.nethash = options.nethash || '0ab796cd'
-    this.serial = 0
     this.logger = options.logger || console
 
     this._header = `${Message.PRIFIX}//${this.version}@${this.nethash}`
@@ -89,9 +88,9 @@ export class Message {
     const isUnary = meta === undefined && data === undefined
     const header_size = this._header_size
     const buf = Buffer.alloc(header_size + 8 + (isUnary ? 0 : 2))
-    const currentSerial = isNaN(serial) ? this.serial++ : serial
+
     buf.write(this._header)
-    buf.writeUInt16LE(currentSerial & 0xffff, header_size + 4)
+    buf.writeUInt16LE(serial, header_size + 4)
     buf.writeUInt16LE(cmd, header_size + 6)
     if (isUnary) { // 0 等数字, false, true, 按对像处理; null 是对象; '', "" 是string
       buf.writeUInt32LE(this.minPacketSize, header_size)

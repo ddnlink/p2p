@@ -31,6 +31,7 @@ export class Pipe extends EventEmitter {
     this.logger = options.logger || console
     this.callback = null
 
+    this._serial = 0
     this._queue = new Map()
     this._buffers = new Buffers()
     this._protocol = new Message({ version: this.version, nethash: this.nethash, logger: this.logger })
@@ -143,10 +144,16 @@ export class Pipe extends EventEmitter {
    * @param data
    */
   send (cmd, data, meta, serial) {
-    const buf = this._protocol.packet(cmd, data, meta, serial)
+    let currentSerial = serial
+    if(isNaN(serial)) {
+      currentSerial = this._serial
+      this._serial = (this._serial + 1) & 0xffff
+    }
+    const buf = this._protocol.packet(cmd, data, meta, currentSerial)
     this.socket.write(buf)
-    // this.logger.debug(`send msg, cmd: ${cmd}, msg: `, msg)
+    // this.logger.debug(`send msg, pipe: ${this.id}, cmd: ${cmd}, serial: ${serial}, currentSerial: ${currentSerial}`)
     // this.logger.debug(`packet msg to buffer: `, data)
+    return currentSerial
   }
 
   /**
@@ -156,17 +163,21 @@ export class Pipe extends EventEmitter {
    */
   async request (cmd, data, meta) {
     return new Promise((resolve, reject) => {
+      const serial = this.send(cmd, data, meta)
       const handle = setTimeout(() => {
+        // this.logger.warn(`---timeout for answer, serial: ${serial}, cmd: ${cmd} ${meta && meta.api} ${this.port}`)
         reject(new Error('request is timeout'))
       }, this.timeout)
 
       function response (err, res) {
         if (err) reject(err)
         clearTimeout(handle)
+        // this.logger.warn(`---success for answer, serial: ${serial}, cmd: ${cmd} ${meta && meta.api} ${this.port}`)
         resolve(res)
       }
-      this._queue.set(this._protocol.serial, response.bind(this))
-      this.send(cmd, data, meta)
+
+      // this.logger.warn(`---waiting for answer, serial: ${serial}, cmd: ${cmd} ${meta && meta.api} ${this.port}`)
+      this._queue.set(serial, response.bind(this))
     })
   }
 
@@ -179,6 +190,7 @@ export class Pipe extends EventEmitter {
     // this.logger.debug('received packet: ', packet)
     if (!packet) return
     const { serial, cmd } = packet
+    // this.logger.debug(`received packet, serial:${serial}, cmd: ${cmd}`)
     if (cmd === Message.commands.PING) {
       this.send(Message.commands.PONG, undefined, undefined, serial)
       return

@@ -7,8 +7,8 @@ import crypto from 'crypto'
  * @param {*} family: 4 = IPv4-only, 6 = IPv6-only, 0 = either (default).
  */
 export class Peer {
-  constructor ({ id, host, port, family }) {
-    this.id = id || Peer.getId(`${host}:${port}`)
+  constructor ({ host, port, family }) {
+    this.id = Peer.getId(`${host}:${port}`)
     this.host = host
     this.port = port
     this.family = family
@@ -80,7 +80,6 @@ export class Inventory {
   }
 
   add (peer) {
-    if (peer.id === this.id) return
     if (!this.peers.has(peer.id)) this.peers.set(peer.id, new Peer(peer))
 
     // this.logger.debug(`peer added to inventory`, peer)

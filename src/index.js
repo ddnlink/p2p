@@ -25,7 +25,7 @@ export class P2P { // extends EventEmitter {
     this.port = options.port || 9001
     this.host = options.host || '127.0.0.1'
     this.cycle = options.cycle || 10000
-    this.timeout = options.timeout || 5000
+    this.timeout = options.timeout || 60000
     this.version = options.version || 'v1'
     this.nethash = options.nethash || '0ab796cd'
     this.family = options.family
@@ -141,6 +141,8 @@ export class P2P { // extends EventEmitter {
 
   _addPipe (pipe, peer) {
     pipe.id = peer.id
+    pipe.host = peer.host
+    pipe.port = peer.port
     this.pool.set(pipe.id, pipe)
     this.inventory.add(peer)
 
@@ -152,14 +154,15 @@ export class P2P { // extends EventEmitter {
    * @param {*} socket
    * @returns
    */
-  _createPipe (socket) {
-    const options = {
+  _createPipe (options) {
+    const opt = {
       version: this.version,
       nethash: this.nethash,
       timeout: this.timeout || 15000,
-      logger: this.logger
+      logger: this.logger,
+      ...options
     }
-    const pipe = new Pipe(socket, options)
+    const pipe = new Pipe(opt)
 
     const self = this
     self.count = (self.count || 0) + 1
@@ -225,7 +228,7 @@ export class P2P { // extends EventEmitter {
     try {
       const peer = await this.getPeer(node)
       if (!peer) {
-        // this.logger.warn(`Not found valid peer`, node)
+        this.logger.warn(`Not found valid peer`, node)
         return
         // throw new Error('Not found valid peer')
       }
@@ -233,12 +236,18 @@ export class P2P { // extends EventEmitter {
       const { id, host, port } = peer
       if (!id && (!host || !port)) {
         this.logger.warn(`The peer is not valid: ${host}:${port}`)
-        throw new Error(`The peer is not valid: ${host}:${port}`)
+        return
+        // throw new Error(`The peer is not valid: ${host}:${port}`)
       }
-      // const url = checkUrl(api, host, port)
-      // this.logger.warn(`check url, origin: ${api}, now: ${url}`)
+      if(this.host === host && this.port === port) {
+        this.logger.warn(`Should not request to yourself: ${host}:${port}`)
+        return
+      }
       const pipe = await this.connect(port, host)
-      if (!pipe) return
+      if (!pipe) {
+        this.logger.warn(`Pipe connect to ${host}:${port} failed.`)
+        return
+      }
       const msg = await pipe.request(method, data, { api })
       if (!this.pool.has(pipe.id)) {
         pipe.close()
@@ -247,7 +256,6 @@ export class P2P { // extends EventEmitter {
     } catch (err) {
       const errMsg = err.errno === 'ECONNREFUSED' ? 'ECONNREFUSED' : err.message
       this.logger.warn('request data error: ', errMsg)
-      // return { error: err.message }
       throw err
     }
   }
@@ -262,7 +270,7 @@ export class P2P { // extends EventEmitter {
       const key = Object.keys(this.routes).find((path) => {
         return reg.test(path.trim())
       })
-      this.logger.debug(`got request to: ${key}, ${cmd}, ${pathname}`, reg)
+      // this.logger.debug(`got request to: ${key}, ${cmd}, ${pathname}`, reg)
       const action = !key ? undefined : this.routes[key]
       if (!action) return { error: '404: notfound' }
       return await action(req)
@@ -377,6 +385,7 @@ export class P2P { // extends EventEmitter {
     fib.push(...peers.map(peer => peer.id))
     peers.forEach(async peer => {
       try {
+        if(self.id === peer.id) return
         if (!self.pool.has(peer.id)) {
           await self.connect(peer.port, peer.host)
         }
@@ -405,7 +414,7 @@ export class P2P { // extends EventEmitter {
     try {
       const peer = this.inventory.getRandomPeer()
 
-      if (!peer) return
+      if (!peer || this.id === peer.id) return
       if (!this.pool.has(peer.id)) {
         await this.connect(peer.port, peer.host)
       }
@@ -416,8 +425,9 @@ export class P2P { // extends EventEmitter {
       if (peers) {
         const self = this
         peers.forEach((item) => {
-          if (item.id === self.id) return
-          self.inventory.add(item)
+          const newPeer = new Peer(item)
+          if (newPeer.id === self.id) return
+          self.inventory.add(newPeer)
         })
       }
 
@@ -430,7 +440,7 @@ export class P2P { // extends EventEmitter {
   }
 
   /**
-   * discover peer from any a peer
+   * sort peer and verify the connection of inventory
    */
   async _sortPeers () {
     try {

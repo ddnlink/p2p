@@ -37,8 +37,8 @@ if (fs.existsSync(dbfile1)) {
 if (fs.existsSync(dbfile2)) {
   fs.unlinkSync(dbfile2)
 }
-const peer1 = new P2P({ port: 8001, host: '127.0.0.1', routes, timeout: 1000, dbfile: dbfile1 })
-const peer2 = new P2P({ port: 8002, host: '127.0.0.1', routes, timeout: 1000, dbfile: dbfile2 })
+const peer1 = new P2P({ port: 8001, host: '127.0.0.1', routes, timeout: 10000, dbfile: dbfile1 })
+const peer2 = new P2P({ port: 8002, host: '127.0.0.1', routes, timeout: 10000, dbfile: dbfile2 })
 peer1.prepare()
 peer2.prepare()
 
