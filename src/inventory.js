@@ -154,7 +154,7 @@ export class Inventory {
 
   getNextHop (fib, count) {
     const peers = []
-    const results = []
+    const results = new Set()
     this.peers.forEach((peer) => {
       if (peer.status !== Peer.STATUS.disable && !fib.includes(peer.id)) peers.push(peer)
     })
@@ -162,8 +162,8 @@ export class Inventory {
     count = peers.length > count ? count : peers.length
     for (let i = 0; i < count; i++) {
       const rnd = Math.floor(Math.random() * peers.length)
-      results.push(peers[rnd])
+      results.add(peers[rnd])
     }
-    return results
+    return [...results]
   }
 }

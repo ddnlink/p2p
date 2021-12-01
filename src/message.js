@@ -98,7 +98,7 @@ export class Message {
     }
 
     let metadata, payload
-    if (cmd === Message.commands.PUSH) {
+    if (cmd === Message.commands.PUSH) { // 廣播的數據已經進行過處理
       metadata = meta || {}
       payload = data
     } else {
@@ -122,10 +122,12 @@ export class Message {
   unpack (bufs) {
     // 如果大於最小包，繼續，否則返回
     if (bufs.length < this.minPacketSize) {
+      this.logger.warn('Discard invalid bufs: ', bufs)
       return
     }
-    // 找不到了包頭， 返回
+    // 找不到包頭， 返回
     if (!this._findHeader(bufs)) {
+      this.logger.warn('Not found header', bufs)
       return
     }
 
@@ -135,6 +137,7 @@ export class Message {
     // 包大小 =  头 + 长度 + 序列号 + 命令 + 元數據長度 +   元數據    +  负载长度
     // 即大小 =  头 +  4  +    2   +  2   +     2     +  metasize   +   size
     if (bufs.length < packet_size) {
+      this.logger.warn('Buffers length is not right', bufs)
       return
     }
 

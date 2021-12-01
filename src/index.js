@@ -51,6 +51,7 @@ export class P2P { // extends EventEmitter {
     const self = this
     this.listen()
     this.seeds.slice(0, this.maxConnectSize).forEach(seed => {
+      if(seed.id === this.id) return
       self.connect(seed.port, seed.ip).catch((err) => {
         if (err.errno === 'ECONNREFUSED') {
           this.logger.debug(`connect to seed: ${seed.ip}:${seed.port} fail: ECONNREFUSED`)
@@ -146,7 +147,7 @@ export class P2P { // extends EventEmitter {
     this.pool.set(pipe.id, pipe)
     this.inventory.add(peer)
 
-    this.logger.debug(`success connect to peer: ${peer.host}:${peer.port}`)
+    this.logger.debug(`${this.port} success connect to peer: ${peer.host}:${peer.port} socket: ${pipe.socket.remotePort}`)
   }
 
   /**
@@ -263,6 +264,7 @@ export class P2P { // extends EventEmitter {
   async _callApi (msg, peer) {
     try {
       const meta = msg.meta || {}
+      if (!meta.api) return { error: `404: route: ${meta.api} notfound` }
       const { params, pathname } = parseUrl(meta.api)
       const req = { body: msg.data, params, peer }
       const cmd = msg.cmd === Message.commands.PUSH ? Message.commands.POST : msg.cmd

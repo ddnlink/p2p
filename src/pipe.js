@@ -186,8 +186,9 @@ export class Pipe extends EventEmitter {
    * @returns
    */
   _processData () {
+    if(!this._buffers.length) return;
     const packet = this._protocol.unpack(this._buffers)
-    // this.logger.debug('received packet: ', packet)
+    // this.logger.debug('received packet: ', this.port, packet)
     if (!packet) return
     const { serial, cmd } = packet
     // this.logger.debug(`received packet, serial:${serial}, cmd: ${cmd}`)
