@@ -23,7 +23,7 @@ export class P2P { // extends EventEmitter {
     // check if we have options
     options = options || {}
     this.port = options.port || 9001
-    this.host = options.host || '127.0.0.1'
+    this.host = options.host || '0.0.0.0'
     this.cycle = options.cycle || 10000
     this.timeout = options.timeout || 60000
     this.version = options.version || 'v1'
@@ -71,7 +71,7 @@ export class P2P { // extends EventEmitter {
     self._server = net.createServer()
     self._server.listen({
       port: this.port,
-      host: this.host
+      host: '0.0.0.0'
     }, () => {
       self.family = self._server.address().family
       self.logger.debug(`p2p server start to listen port: ${self.port}`)

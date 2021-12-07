@@ -137,7 +137,7 @@ export class Message {
     // 包大小 =  头 + 长度 + 序列号 + 命令 + 元數據長度 +   元數據    +  负载长度
     // 即大小 =  头 +  4  +    2   +  2   +     2     +  metasize   +   size
     if (bufs.length < packet_size) {
-      this.logger.warn('Buffers length is not right', bufs)
+      this.logger.warn(`Buffers length is not right, expect: ${packet_size}, get: ${bufs.length}`, bufs)
       return
     }
 
