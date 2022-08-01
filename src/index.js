@@ -22,16 +22,16 @@ export class P2P { // extends EventEmitter {
   constructor (options) {
     // check if we have options
     options = options || {}
-    this.port = options.port || 9001
+    this.port = +options.port || 9001
     this.host = options.host || '0.0.0.0'
-    this.cycle = options.cycle || 10000
-    this.timeout = options.timeout || 60000
+    this.cycle = +options.cycle || 10000
+    this.timeout = +options.timeout || 60000
     this.version = options.version || 'v1'
     this.nethash = options.nethash || '0ab796cd'
     this.family = options.family
     this.seeds = options.seeds || []
     this.routes = options.routes || {}
-    this.maxConnectSize = options.maxConnectSize || 8
+    this.maxConnectSize = +options.maxConnectSize || 8
     this.logger = options.logger || console
 
     this.ready = false
@@ -51,7 +51,8 @@ export class P2P { // extends EventEmitter {
     const self = this
     this.listen()
     this.seeds.slice(0, this.maxConnectSize).forEach(seed => {
-      if(seed.id === this.id) return
+      if (seed.id === this.id) return
+
       self.connect(seed.port, seed.ip).catch((err) => {
         if (err.errno === 'ECONNREFUSED') {
           this.logger.debug(`connect to seed: ${seed.ip}:${seed.port} fail: ECONNREFUSED`)
@@ -102,7 +103,6 @@ export class P2P { // extends EventEmitter {
     const self = this
     return new Promise((resolve, reject) => {
       const peer = new Peer({ host, port })
-
       if (peer.id === self.id) {
         this.logger.warn(`Should not connect self: ${host}:${port}`)
         reject(new Error(`Should not connect to self: ${host}:${port}`))
@@ -229,7 +229,7 @@ export class P2P { // extends EventEmitter {
     try {
       const peer = await this.getPeer(node)
       if (!peer) {
-        this.logger.warn(`Not found valid peer`, node)
+        this.logger.warn('Not found valid peer', node)
         return
         // throw new Error('Not found valid peer')
       }
@@ -240,7 +240,7 @@ export class P2P { // extends EventEmitter {
         return
         // throw new Error(`The peer is not valid: ${host}:${port}`)
       }
-      if(this.host === host && this.port === port) {
+      if (this.host === host && this.port === port) {
         this.logger.warn(`Should not request to yourself: ${host}:${port}`)
         return
       }
@@ -289,7 +289,11 @@ export class P2P { // extends EventEmitter {
    * @returns
    */
   async _processMessage (msg, pipe) {
-    const peer = this.inventory.get(pipe.id)
+    let peer = this.inventory.get(pipe.id)
+    if (!peer || peer.status === Peer.STATUS.disable) {
+      this.inventory.addMap(pipe.id)
+      peer = this.inventory.get(pipe.id)
+    }
     switch (msg.cmd) {
       case Message.commands.PUSH: {
         const { signature, checksum, fib } = msg.meta || {}
@@ -387,7 +391,7 @@ export class P2P { // extends EventEmitter {
     fib.push(...peers.map(peer => peer.id))
     peers.forEach(async peer => {
       try {
-        if(self.id === peer.id) return
+        if (self.id === peer.id) return
         if (!self.pool.has(peer.id)) {
           await self.connect(peer.port, peer.host)
         }
